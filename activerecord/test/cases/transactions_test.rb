@@ -271,6 +271,28 @@ class TransactionTest < ActiveRecord::TestCase
       ActiveRecord::Base.connection_handler.clear_all_connections!(:all)
     end
 
+    def test_connection_maintained_in_pool_when_nested_transaction_fails_to_be_created
+      connection = Topic.lease_connection
+
+      topic = nil
+      Topic.transaction(joinable: false) do
+        topic = Topic.create!
+        
+        begin
+          # This causes a ActiveRecord::TransactionIsolationError:
+          ActiveRecord::Base.transaction(isolation: :serializable) {}
+        rescue
+        end
+      end
+
+      assert topic.reload.present?
+
+      assert connection.active?
+      assert Topic.connection_pool.connections.include?(connection)
+    ensure
+      ActiveRecord::Base.connection_handler.clear_all_connections!(:all)
+    end
+
     def test_connection_removed_from_pool_when_commit_raises_and_rollback_raises
       connection = Topic.lease_connection
 

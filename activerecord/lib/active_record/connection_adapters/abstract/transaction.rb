@@ -621,7 +621,12 @@ module ActiveRecord
 
       def within_new_transaction(isolation: nil, joinable: true)
         @connection.lock.synchronize do
-          transaction = begin_transaction(isolation: isolation, joinable: joinable)
+          begin
+            transaction = begin_transaction(isolation: isolation, joinable: joinable)
+          rescue ActiveRecord::TransactionIsolationError
+            transaction_isolation_error = true
+            raise
+          end
           begin
             yield transaction.user_transaction
           rescue Exception => error
@@ -648,7 +653,7 @@ module ActiveRecord
           end
         ensure
           unless transaction&.state&.completed?
-            @connection.throw_away!
+            @connection.throw_away! unless transaction_isolation_error
             transaction&.incomplete!
           end
         end
